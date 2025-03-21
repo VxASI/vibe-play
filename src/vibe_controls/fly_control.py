@@ -31,6 +31,26 @@ mouse = MouseController()
 # State variables
 w_pressed = False
 space_pressed = False
+mouse_button_pressed = False
+last_avg_x = None
+last_avg_y = None
+HORIZONTAL_SENSITIVITY = 50  # Adjusted based on smaller horizontal movements
+VERTICAL_SENSITIVITY = 100   # Adjusted based on larger vertical movements
+ALPHA = 0.5  # Increased for more responsiveness (less smoothing)
+
+# Utility function to count extended fingers
+def count_extended_fingers(landmarks):
+    fingers = [
+        (8, 6),   # Index finger: tip to PIP
+        (12, 10), # Middle finger
+        (16, 14), # Ring finger
+        (20, 18), # Pinky
+    ]
+    extended = 0
+    for tip, pip in fingers:
+        if landmarks[tip].y < landmarks[pip].y:  # Tip above PIP means extended
+            extended += 1
+    return extended
 
 # --- Fly Mode Logic ---
 def get_gesture_fly(landmarks):
@@ -166,16 +186,24 @@ def run_fly_mode():
         cv2.destroyAllWindows()
         logger.info("App closed.")
 
-# --- Shoot Mode Logic ---
+# --- Shoot Mode Logic --- (WIP)
 def run_shoot_mode():
-    """Run the shoot mode controls using mouse for aiming and clicking."""
+    """Run the shoot mode controls for FPS games."""
     cap = cv2.VideoCapture(0)
     if not cap.isOpened():
         logger.error("Failed to open webcam. Exiting.")
         sys.exit(1)
 
-    logger.info("Shoot mode activated. Use hand to aim, fist to shoot. Press ESC to exit.")
-    last_click_time = 0
+    global mouse_button_pressed, w_pressed, last_direction_x, last_direction_y
+    mouse_button_pressed = False
+    w_pressed = False
+    last_direction_x = 0
+    last_direction_y = 0
+    HORIZONTAL_SENSITIVITY = 50  # Adjust for horizontal responsiveness
+    VERTICAL_SENSITIVITY = 100   # Adjust for vertical responsiveness
+    ALPHA = 0.5  # Smoothing factor for stability
+    
+    logger.info("Shoot mode activated. Point with two fingers to aim, extend four fingers to shoot. Press ESC to exit.")
 
     try:
         while True:
@@ -186,31 +214,86 @@ def run_shoot_mode():
             
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             results = hands.process(frame_rgb)
+            num_hands = len(results.multi_hand_landmarks) if results.multi_hand_landmarks else 0
             
             if results.multi_hand_landmarks:
                 landmarks = results.multi_hand_landmarks[0].landmark
-                wrist_x = landmarks[0].x  # 0 to 1
-                wrist_y = landmarks[0].y  # 0 to 1
+                extended = count_extended_fingers(landmarks)
+                logger.debug(f"Extended fingers: {extended}")
                 
-                # Map hand position to screen (assuming 1920x1080, adjust as needed)
-                screen_width, screen_height = 1920, 1080
-                mouse_x = wrist_x * screen_width
-                mouse_y = wrist_y * screen_height
-                mouse.position = (mouse_x, mouse_y)
-                logger.debug(f"Mouse moved to ({mouse_x:.0f}, {mouse_y:.0f})")
+                if extended == 2:
+                    # Two fingers: Calculate pointing direction
+                    index_tip = landmarks[8]   # Index fingertip
+                    middle_tip = landmarks[12] # Middle fingertip
+                    wrist = landmarks[0]       # Wrist
+                    
+                    # Average position of the two fingertips
+                    avg_x = (index_tip.x + middle_tip.x) / 2
+                    avg_y = (index_tip.y + middle_tip.y) / 2
+                    
+                    # Direction vector from wrist to average fingertip position
+                    direction_x = avg_x - wrist.x
+                    direction_y = avg_y - wrist.y
+                    
+                    # Normalize the direction vector to ensure consistent speed
+                    magnitude = math.sqrt(direction_x**2 + direction_y**2)
+                    if magnitude > 0:
+                        direction_x /= magnitude
+                        direction_y /= magnitude
+                    else:
+                        direction_x = 0
+                        direction_y = 0
+                    
+                    # Scale direction with sensitivity
+                    dx = direction_x * HORIZONTAL_SENSITIVITY
+                    dy = direction_y * VERTICAL_SENSITIVITY
+                    
+                    # Apply smoothing to reduce jitter
+                    smoothed_dx = ALPHA * dx + (1 - ALPHA) * last_direction_x
+                    smoothed_dy = ALPHA * dy + (1 - ALPHA) * last_direction_y
+                    
+                    # Move mouse in the pointing direction
+                    mouse.move(int(smoothed_dx), int(smoothed_dy))
+                    logger.debug(f"Pointing direction: dx={smoothed_dx:.2f}, dy={smoothed_dy:.2f}")
+                    
+                    # Update last direction for smoothing
+                    last_direction_x = smoothed_dx
+                    last_direction_y = smoothed_dy
                 
-                # Simple fist detection: check if fingers are folded
-                index_tip_y = landmarks[8].y
-                index_mcp_y = landmarks[5].y
-                if index_tip_y > index_mcp_y:  # Finger folded down
-                    current_time = cv2.getTickCount() / cv2.getTickFrequency()
-                    if current_time - last_click_time > 0.5:  # Debounce clicks
-                        mouse.click(Button.left, 1)
-                        logger.info("Fist detected: Mouse clicked")
-                        last_click_time = current_time
+                elif extended == 4:
+                    # Four fingers: Hold left mouse button to shoot
+                    if not mouse_button_pressed:
+                        mouse.press(Button.left)
+                        mouse_button_pressed = True
+                        logger.info("Four fingers: Holding mouse left button")
+                else:
+                    # Release mouse button if not four fingers
+                    if mouse_button_pressed:
+                        mouse.release(Button.left)
+                        mouse_button_pressed = False
+                        logger.info("Released mouse left button")
                 
+                # Draw hand landmarks for visual feedback
                 for hand_landmarks in results.multi_hand_landmarks:
                     mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            else:
+                # No hands detected: Release controls and reset direction
+                if mouse_button_pressed:
+                    mouse.release(Button.left)
+                    mouse_button_pressed = False
+                    logger.info("No hands: Released mouse left button")
+                last_direction_x = 0
+                last_direction_y = 0
+            
+            # Handle 'W' key for forward movement
+            if num_hands >= 1 and not w_pressed:
+                keyboard.press('w')
+                w_pressed = True
+                logger.info("One hand: Holding W")
+            elif num_hands < 1 and w_pressed:
+                keyboard.release('w')
+                w_pressed = False
+                logger.info("No hands: Released W")
             
             cv2.imshow('Hand Tracking - Shoot Mode', frame)
             if cv2.waitKey(1) & 0xFF == 27:
@@ -218,6 +301,11 @@ def run_shoot_mode():
                 break
 
     finally:
+        # Cleanup: Release all controls
+        if mouse_button_pressed:
+            mouse.release(Button.left)
+        if w_pressed:
+            keyboard.release('w')
         cap.release()
         cv2.destroyAllWindows()
         logger.info("App closed.")
