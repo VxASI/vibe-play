@@ -108,8 +108,8 @@ try:
                 "flat": 'w',
                 "pitch_up": Key.down,
                 "pitch_down": Key.up,
-                "yaw_left": 'a',
-                "yaw_right": 'd',
+                "yaw_left": 'd',
+                "yaw_right": 'a',
                 "roll_left": Key.left,
                 "roll_right": Key.right
             }
