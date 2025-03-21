@@ -26,4 +26,4 @@ classifiers = [
 "Homepage" = "https://github.com/VxASI/vibe-play"
 
 [project.scripts]
-vibe-controls = "vibe_controls:run_fly_control"
+vibe-controls = "vibe_controls.fly_control:main"
