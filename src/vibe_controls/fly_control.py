@@ -7,6 +7,7 @@ import math
 import logging
 import sys
 import argparse
+import time  # For cooldown
 
 # Configure logging
 logging.basicConfig(
@@ -186,7 +187,7 @@ def run_fly_mode():
         cv2.destroyAllWindows()
         logger.info("App closed.")
 
-# --- Shoot Mode Logic --- (WIP)
+# --- Shoot Mode Logic ---
 def run_shoot_mode():
     """Run the shoot mode controls for FPS games."""
     cap = cv2.VideoCapture(0)
@@ -199,9 +200,6 @@ def run_shoot_mode():
     w_pressed = False
     last_direction_x = 0
     last_direction_y = 0
-    HORIZONTAL_SENSITIVITY = 50  # Adjust for horizontal responsiveness
-    VERTICAL_SENSITIVITY = 100   # Adjust for vertical responsiveness
-    ALPHA = 0.5  # Smoothing factor for stability
     
     logger.info("Shoot mode activated. Point with two fingers to aim, extend four fingers to shoot. Press ESC to exit.")
 
@@ -310,17 +308,80 @@ def run_shoot_mode():
         cv2.destroyAllWindows()
         logger.info("App closed.")
 
+# --- Flappy Mode Logic ---
+def run_flappy_mode():
+    """Run the flappy mode controls for games like Flappy Bird."""
+    cap = cv2.VideoCapture(0)
+    if not cap.isOpened():
+        logger.error("Failed to open webcam. Exiting.")
+        sys.exit(1)
+
+    global space_pressed
+    space_pressed = False
+    last_flap_time = 0  # Track the last time a flap was triggered
+    FLAP_COOLDOWN = 0.5  # Cooldown period in seconds between flaps
+
+    logger.info("Flappy mode activated. Hold a hand with all fingers extended to flap (press Space). Press ESC to exit.")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                logger.error("Failed to capture frame. Exiting.")
+                break
+            
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            results = hands.process(frame_rgb)
+            num_hands = len(results.multi_hand_landmarks) if results.multi_hand_landmarks else 0
+            
+            if results.multi_hand_landmarks:
+                landmarks = results.multi_hand_landmarks[0].landmark
+                extended = count_extended_fingers(landmarks)
+                
+                if extended == 4:  # Check for hand with all fingers extended (like a bird's wing)
+                    # logger.info(f"Hand with {extended} fingers detected: flapping gesture recognized")
+                    current_time = time.time()
+                    if current_time - last_flap_time >= FLAP_COOLDOWN:
+                        # Trigger a flap (press and release Space)
+                        keyboard.press(Key.space)
+                        keyboard.release(Key.space)
+                        logger.info("Flap detected: Space pressed")
+                        last_flap_time = current_time
+                # else:
+                #     # Log if the gesture doesn't match
+                #     # logger.info(f"Hand with {extended} fingers detected: not a flapping gesture")
+                
+                # Draw hand landmarks for visual feedback
+                for hand_landmarks in results.multi_hand_landmarks:
+                    mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+            # else:
+            #     # No hands detected
+            #     # logger.info("No hands detected")
+            
+            # cv2.imshow('Hand Tracking - Flappy Mode', frame)
+            if cv2.waitKey(1) & 0xFF == 27:
+                logger.info("ESC pressed. Exiting.")
+                break
+
+    finally:
+        # Cleanup: Release all controls
+        cap.release()
+        cv2.destroyAllWindows()
+        logger.info("App closed.")
+
 # --- Main Entry Point ---
 def main():
     """Parse command-line arguments and run the selected mode."""
     parser = argparse.ArgumentParser(description="Vibe Controls: Hand gesture controls for games.")
-    parser.add_argument("--mode", choices=["fly", "shoot"], default="fly", help="Control mode (default: fly)")
+    parser.add_argument("--mode", choices=["fly", "shoot", "flappy"], default="fly", help="Control mode (default: fly)")
     args = parser.parse_args()
 
     if args.mode == "fly":
         run_fly_mode()
     elif args.mode == "shoot":
         run_shoot_mode()
+    elif args.mode == "flappy":
+        run_flappy_mode()
 
 if __name__ == "__main__":
     main()

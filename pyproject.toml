@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vibe-controls"
-version = "0.1.2"
+version = "0.1.3"
 authors = [
   { name = "VxAI", email = "vxasi7@gmail.com" },
 ]
