@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vibe-controls"
+version = "0.1.1"
+authors = [
+  { name = "VxAI", email = "vxasi7@gmail.com" },
+]
+description = "A Python package to control games using hand gestures via webcam."
+readme = "README.md"
+requires-python = ">=3.7,<3.12"
+dependencies = [
+  "mediapipe>=0.10.14",
+  "opencv-python>=4.5.0",
+  "pynput>=1.7.0",
+]
+license = "MIT"
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/VxASI/vibe-play"
+
+[project.scripts]
+vibe-controls = "vibe_controls:run_fly_control"
